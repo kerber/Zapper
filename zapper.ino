@@ -3,7 +3,7 @@
 #include <ESP8266WebServer.h>
 
 // Network name for Wifi Access Point
-#define WIFI_SSID "Wizards Rule"
+#define WIFI_SSID "Nerds Rule"
 
 // Milliseconds to keep relay open
 #define ZAP_TIME 4000
@@ -24,7 +24,6 @@ void handleRoot() {
   Serial.println("Enter handleRoot");
   // Super simple website for user interaction
   // Show a button that hits a URL
-  String CSS
   String content = "<html><body style=\"background-color:black;\"><div style=\"width:100%;height:100%;display:flex;align-items:center;justify-content:center;\">"
                    "<button class=\"button\" style=\"height:400px;width:400px;background-color:red;color:white;font-size:4em;border-radius:50%;\" onclick=\"send()\">Zap</button>"
                    "<script>function send(){ var xhttp = new XMLHttpRequest();"
