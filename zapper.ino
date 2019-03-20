@@ -6,7 +6,14 @@
 #define WIFI_SSID "Nerds Rule"
 
 // Milliseconds to keep relay open
-#define ZAP_TIME 4000
+#define ZAP_TIME 1000
+
+// Milliseconds to keep relay open
+#define ZAP_INTERVAL 60000
+
+// Pins connected to relay signal pins
+#define RELAY_PIN_1 16
+#define RELAY_PIN_2 5
 
 // Misc Setup
 const byte DNS_PORT = 53;
@@ -15,8 +22,12 @@ DNSServer dnsServer;
 ESP8266WebServer server(80);
 
 // Misc variables for keeping track of things
-unsigned long lastZapStartTime;
-boolean zapping = false;
+unsigned long lastControlZapStartTime;
+unsigned long lastZapIntervalStartTime;
+unsigned long lastIntervalClickTime;
+boolean zapping1 = false;
+boolean zapping2 = false;
+int zapIntervalCounter = 1;
 
 // Webserver response to http://192.168.0.1/
 // Displays a simple page for user interaction
@@ -35,38 +46,68 @@ void handleRoot() {
 
 // Webserver response to http://192.168.0.1/zap
 // Turns on the zapper
-void handleZap() {
+void handleControlZap() {
   Serial.println("Enter handleRoot");
   Serial.println("starting zap");
   // Set the time for zapper auto-off
-  lastZapStartTime = millis();
+  lastControlZapStartTime = millis();
   // Activate relay
-  zapping = true;
-  setRelayState(zapping);
+  zapping1 = true;
+  setRelayState(RELAY_PIN_1, zapping1);
   // Redirect the user to the default landing page
   server.sendHeader("Location", "/");
   server.sendHeader("Cache-Control", "no-cache");
   server.send(301);
 }
 
-// Run constantly to turn of the zapper when the time has expired
-void checkZapTimer() {
+// Run constantly to turn of the control zapper when the time has expired
+void checkControlTimer() {
   // If currently zapping
-  if (zapping) {
+  if (zapping1) {
     // Check if they've had enough
-    if (millis() - lastZapStartTime > ZAP_TIME) {
+    if (millis() - lastControlZapStartTime > ZAP_TIME) {
       // Disable relay
-      zapping = false;
-      setRelayState(zapping);
-      Serial.println("ending zap");
+      zapping1 = false;
+      setRelayState(RELAY_PIN_1, zapping1);
+      Serial.println("ending controlled zap");
+    }
+  }
+}
+
+// Run constantly to control the interval zapper
+void checkIntervalTimer() {
+  //if not currently zapping
+  if (!zapping2) {
+    //check when next zap should happen
+    long zapIntervalWait = ZAP_INTERVAL - ( 500 * zapIntervalCounter );
+    //if it's time for a zap
+    if (millis() - lastZapIntervalStartTime > zapIntervalWait) {
+      zapping2 = true;
+      setRelayState(RELAY_PIN_2, zapping2);
+      Serial.println("start interval zap");
+      Serial.print("counter: ");
+      Serial.println(zapIntervalCounter);
+    }
+  }
+  //if currently zapping
+  else {
+    //check when zap should stop
+    if (millis() - lastZapIntervalStartTime > ZAP_INTERVAL) {
+      lastZapIntervalStartTime = millis();
+      //reset the counter after 5
+      zapIntervalCounter %= 5;
+      zapIntervalCounter++;
+      zapping2 = false;
+      setRelayState(RELAY_PIN_2, zapping2);
+      Serial.println("stop interval zap");
     }
   }
 }
 
 // Hide the confusing fact that you have to set the LED_BUILTING pin to LOW to turn on the zapper
 // Ain't noone got time for that
-void setRelayState(bool zap) {
-  digitalWrite(LED_BUILTIN, !zap);
+void setRelayState(int relay, bool zap) {
+  digitalWrite(relay, !zap);
 }
 
 // Initial Arduino setup
@@ -74,11 +115,12 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Booting Sketch...");
 
-  // Initialize the LED_BUILTIN pin as an output
-  // It just happens to also be connected to the relay for easy debugging
-  pinMode(LED_BUILTIN, OUTPUT);
-  // Initialize the relay to the predetermined start state
-  setRelayState(zapping);
+  // Initialize the relay pins as an output
+  pinMode(RELAY_PIN_1, OUTPUT);
+  pinMode(RELAY_PIN_2, OUTPUT);
+  // Initialize the relays to the predetermined start state
+  setRelayState(RELAY_PIN_1, zapping1);
+  setRelayState(RELAY_PIN_2, zapping2);
 
   // Set up the Wifi to be an Access Point
   WiFi.mode(WIFI_AP);
@@ -96,7 +138,7 @@ void setup() {
   // This is the default endpoint returned when the user is directed to our IP
   server.on("/", HTTP_GET, handleRoot);
   // This is the endpoint that activates the zapper
-  server.on("/zap", HTTP_GET, handleZap);
+  server.on("/zap", HTTP_GET, handleControlZap);
   // Reply to any unknown requests to our default page
   server.onNotFound(handleRoot);
   server.begin();
@@ -110,5 +152,7 @@ void loop() {
   // Handle any URL requests
   server.handleClient();
   // Check whether zapper needs to be turned off
-  checkZapTimer();
+  checkControlTimer();
+  // Check whether anything needs to be done with the interval timer
+  checkIntervalTimer();
 }
